@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Moon Shakers - VR Experience</title>
+    <meta name="description" content="VR Experience - Moon Shakers" />
+
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/aframe-extras@6.1.1/dist/aframe-extras.min.js"></script>
+    <script src="first-person-controller.js"></script>
+    <script src="quest-manager.js"></script>
+    <script src="rover-quest-interaction.js"></script>
+    <script src="npc-dialogue-trigger.js"></script>
+    <script src="simple-rover-interaction.js"></script>
+    <script src="hud-toggle-controller.js"></script>
+    <script>
+AFRAME.registerComponent("quake-event", {
+  schema: {},
+
+  init: function () {
+    console.log("[Quake Event] Init.");
+    this.camera = this.el.querySelector("a-camera");
+
+    if (!this.camera) {
+      console.error("[Quake] Camera not found.");
+      return;
+    }
+
+    this.originalPosition = new THREE.Vector3();
+    this.originalRotation = new THREE.Euler();
+    this.shaking = false;
+    this.shakeStart = 0;
+    this.shakeDuration = 7000; // 7s de terremoto
+
+    // Audios
+    this.quakeSound = this.camera.querySelector("#quakeSound");
+    this.commsSound = this.camera.querySelector("#commsSound");
+    this.commsText = this.camera.querySelector("#commsText");
+
+    // Activar terremoto a los 5s
+    setTimeout(() => {
+      this.startQuake();
+    }, 20000);
+
+    // Mensaje desde la base a los 17s
+    setTimeout(() => {
+      if (this.commsSound?.components.sound) {
+        this.commsSound.components.sound.playSound();
+      }
+      if (this.commsText) {
+        this.commsText.setAttribute("visible", true);
+        setTimeout(() => {
+          this.commsText.setAttribute("visible", false);
+        }, 5000);
+      }
+    }, 27000);
+  },
+
+  startQuake: function () {
+    console.log("[Quake] Starting quake...");
+    if (this.quakeSound?.components.sound) {
+      this.quakeSound.components.sound.playSound();
+    }
+
+    const cameraObj = this.camera.object3D;
+    this.originalPosition.copy(cameraObj.position);
+    this.originalRotation.copy(cameraObj.rotation);
+
+    this.shakeStart = Date.now();
+    this.shaking = true;
+  },
+
+  tick: function () {
+    if (!this.shaking) return;
+
+    const now = Date.now();
+    const elapsed = now - this.shakeStart;
+
+    const cameraObj = this.camera.object3D;
+
+    // Movimiento de vibración (aleatorio pero suave)
+    const intensity = 0.03;
+    cameraObj.position.x = this.originalPosition.x + (Math.random() - 0.5) * intensity;
+    cameraObj.position.y = this.originalPosition.y + (Math.random() - 0.5) * intensity;
+    cameraObj.position.z = this.originalPosition.z + (Math.random() - 0.5) * intensity;
+
+    cameraObj.rotation.x = this.originalRotation.x + (Math.random() - 0.5) * 0.02;
+    cameraObj.rotation.y = this.originalRotation.y + (Math.random() - 0.5) * 0.02;
+    cameraObj.rotation.z = this.originalRotation.z + (Math.random() - 0.5) * 0.03;
+
+    if (elapsed >= this.shakeDuration) {
+      this.shaking = false;
+      // Restaurar posición y rotación exacta
+      cameraObj.position.copy(this.originalPosition);
+      cameraObj.rotation.copy(this.originalRotation);
+      console.log("[Quake] Quake ended.");
+    }
+  }
+});
+
+
+
+
+
+
+
+    </script>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      .overlay-screen {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(10, 10, 25, 0.95);
+        color: #e0e0e0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        z-index: 1000;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        opacity: 1;
+        transition: opacity 0.5s ease-out;
+      }
+      .overlay-screen h1 {
+        color: #00ffaa;
+        margin-bottom: 15px;
+        font-size: 3em;
+      }
+      .overlay-screen p {
+        max-width: 600px;
+        margin: 10px 20px;
+        font-size: 1.1em;
+        line-height: 1.6;
+      }
+      .overlay-screen button {
+        margin-top: 30px;
+        padding: 15px 30px;
+        font-size: 1.2em;
+        color: #111;
+        background-color: #00ffaa;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: bold;
+        transition: background-color 0.3s ease;
+      }
+      .overlay-screen button:hover {
+        background-color: #8affd9;
+      }
+      .overlay-screen.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="intro-screen" class="overlay-screen">
+      <h1>MOON SHAKERS</h1>
+      <p>Año 2045. Estación Espacial Lunar "Estación de la Calma".</p>
+      <p>
+        Se ha detectado actividad sísmica anómala en un cráter cercano a la
+        instalación minera de Helio-3 abandonada.
+      </p>
+      <p>
+        Eres la <strong>Comandante Lucía Sierra</strong>. Tu misión: descender a
+        la superficie para investigar los terremotos lunares.
+      </p>
+      <p>
+        <strong
+          >Ve a ver al astronauta Robert, él te contará lo que tienes que hacer. Después interactúa con el vehículo.</strong
+        >
+      </p>
+      <button id="start-button">INICIAR MISIÓN</button>
+    </div>
+
+    <div id="completion-screen" class="overlay-screen" style="display: none">
+      <h1>¡ENHORABUENA!</h1>
+      <p>Has encontrado todas las piezas necesarias para el Rover.</p>
+      <p>Has terminado esta prueba de Moon Shakers.</p>
+      <p>¡Hasta pronto!</p>
+      <button id="explore-button">Quiero seguir explorando</button>
+    </div>
+
+    <a-scene
+      quest-manager
+      physics="driver: ammo; gravity: -1.62"
+      shadow="type: pcfsoft"
+    >
+      <a-assets>
+        <img
+          id="starry-sky-texture"
+          src="https://cdn.glitch.global/faa11781-86a3-4bdc-8f7d-c9752155954a/beautiful-shining-stars-night-sky.jpg?v=1743294136891"
+          crossorigin="anonymous"
+        />
+        <a-asset-item
+          id="dome-model-asset"
+          src="https://cdn.glitch.global/faa11781-86a3-4bdc-8f7d-c9752155954a/domo_natural_xxl_15_metros.glb?v=1743293941577"
+        ></a-asset-item>
+        <a-asset-item
+          id="lunar-rock-model"
+          src="https://cdn.glitch.global/faa11781-86a3-4bdc-8f7d-c9752155954a/moon_rock_2.glb?v=1743363306452"
+        ></a-asset-item>
+        <a-asset-item
+          id="earth-model-asset"
+          src="https://cdn.glitch.global/faa11781-86a3-4bdc-8f7d-c9752155954a/earth%20(1).glb?v=1743290486758"
+          crossorigin="anonymous"
+        ></a-asset-item>
+        <a-asset-item
+          id="moon-surface-model-asset"
+          src="https://cdn.glitch.global/faa11781-86a3-4bdc-8f7d-c9752155954a/moon_-_petavius_crater%20(2).glb?v=1743331580165"
+          crossorigin="anonymous"
+        ></a-asset-item>
+        <a-asset-item
+          id="space-station"
+          src="https://cdn.glitch.global/9545bde0-abee-4cd0-9cbd-a9b157d77328/space_station.glb?v=1743445460865"
+          crossorigin="anonymous"
+        ></a-asset-item>
+        <a-asset-item
+          id="rover-model-asset"
+          src="https://cdn.glitch.global/9545bde0-abee-4cd0-9cbd-a9b157d77328/playmobile_mars_research_vehicle.glb?v=1743515543942"
+          crossorigin="anonymous"
+        ></a-asset-item>
+        <a-asset-item
+          id="robert-model"
+          src="https://cdn.glitch.me/9545bde0-abee-4cd0-9cbd-a9b157d77328/astronaut.glb?v=1744057220653"
+          crossorigin="anonymous"
+
+                      ></a-asset-item>
+        <a-asset-item
+          id="cables-model"
+          src="https://cdn.glitch.global/9545bde0-abee-4cd0-9cbd-a9b157d77328/bunch_of_electric_wires.glb?v=1743788119954"
+          crossorigin="anonymous"
+        ></a-asset-item>
+        <a-asset-item
+          id="wheel-model"
+          src="https://cdn.glitch.global/9545bde0-abee-4cd0-9cbd-a9b157d77328/lrv-_wheel.glb?v=1743788101702"
+          crossorigin="anonymous"
+        ></a-asset-item>
+        <a-asset-item
+          id="panel-model"
+          src="https://cdn.glitch.global/9545bde0-abee-4cd0-9cbd-a9b157d77328/solar_panel%20(1).glb?v=1743788125294"
+          crossorigin="anonymous"
+        ></a-asset-item>
+        <a-asset-item
+          id="tools-model"
+          src="https://cdn.glitch.global/9545bde0-abee-4cd0-9cbd-a9b157d77328/deep_space_tools.glb?v=1743788098605"
+          crossorigin="anonymous"
+        ></a-asset-item>
+        <a-asset-item
+          id="estanteria"
+          src="https://cdn.glitch.global/9545bde0-abee-4cd0-9cbd-a9b157d77328/metal_wire_shelf.glb?v=1743788017741"
+          crossorigin="anonymous"
+        ></a-asset-item>
+        <a-asset-item
+          id="light-tower"
+          src="https://cdn.glitch.global/9545bde0-abee-4cd0-9cbd-a9b157d77328/tripod_omni_directional_lamp.glb?v=1743788091932"
+          crossorigin="anonymous"
+        ></a-asset-item>
+        <a-asset-item
+          id="grua"
+          src="https://cdn.glitch.global/9545bde0-abee-4cd0-9cbd-a9b157d77328/crane.glb?v=1743788111050"
+          crossorigin="anonymous"
+        ></a-asset-item>
+        <audio
+          id="breathingAudio"
+          src="https://cdn.glitch.global/faa11781-86a3-4bdc-8f7d-c9752155954a/Cristian-Lucchetta-Space-Launch-Breathing-Inside-Space-Helmet.mp3?v=1743359013576"
+          preload="auto"
+          crossorigin="anonymous"
+        ></audio>
+        <audio
+          id="robert-line1-audio"
+          src="https://cdn.glitch.global/9545bde0-abee-4cd0-9cbd-a9b157d77328/audio_rover%20completo.mp3?v=1743791189439"
+          preload="auto"
+          crossorigin="anonymous"
+        ></audio>
+        <audio
+          id="jumpAudio"
+          src="https://cdn.glitch.global/9545bde0-abee-4cd0-9cbd-a9b157d77328/SoundBits-Power-Tools-Compressor-Air-Pressure-Release-Steady-Stroke.mp3?v=1743531890557"
+          preload="auto"
+          crossorigin="anonymous"
+        ></audio>
+        <audio
+          id="ambientAudio"
+          src="https://cdn.glitch.global/faa11781-86a3-4bdc-8f7d-c9752155954a/Just-Sound-Effects-Spaceship-Eruptions-Deep-Space-Ambience.mp3?v=1743359016015"
+          preload="auto"
+          crossorigin="anonymous"
+        ></audio>
+        <audio
+          id="quakeAudio"
+          src="https://cdn.glitch.global/faa11781-86a3-4bdc-8f7d-c9752155954a/Unrealsfx-Extreme-Climate-Earthquake-Ground-Cracking-Wood-Break-Deep-Rumble%20(mp3cut.net).mp3?v=1743362742605"
+          preload="auto"
+          crossorigin="anonymous"
+        ></audio>
+        <audio
+          id="commsAudio"
+          src="https://cdn.glitch.global/faa11781-86a3-4bdc-8f7d-c9752155954a/Untitled%20%E2%80%91%20Made%20with%20FlexClip%20(mp3cut.net).mp3?v=1743371781424"
+          preload="auto"
+          crossorigin="anonymous"
+        ></audio>
+        <audio
+          id="success-audio"
+          src="https://cdn.glitch.global/9545bde0-abee-4cd0-9cbd-a9b157d77328/audio%20prueba%20superada.mp3?v=1743802014410"
+          preload="auto"
+          crossorigin="anonymous"
+        ></audio>
+      </a-assets>
+
+      <a-light
+        type="directional"
+        color="#BBB"
+        intensity="3"
+        light="shadowRadius: 0.85"
+        visible=""
+        position="499.99 57 -291"
+      ></a-light>
+      <a-light
+        type="directional"
+        intensity="1.5"
+        color="#ffffff"
+        position="-600 300 -100"
+        rotation="-45 45 0"
+        target="#earthEntity"
+        shadow="cast: true;"
+      ></a-light>
+
+      <a-entity
+        id="Ligh1-luz"
+        position="48.26507 13.39191 -47.63711"
+        rotation="-61.607859879236905 -133.0236112955232 0.6342642792098213"
+        light="color: #f0a966; type: spot; castShadow: true; intensity: 5.1; penumbra: 0.45"
+        visible=""
+      ></a-entity>
+      <a-entity
+        id="Ligh2-luz"
+        position="83.26507 23 -9.63711"
+        rotation="-27 23 35"
+        light="color: #f0a966; type: spot; castShadow: true; intensity: 5.1; penumbra: 0.45"
+        visible=""
+      ></a-entity>
+
+      <a-sky
+        src="#starry-sky-texture"
+        rotation="0 -90 0"
+        scale="10 10 10"
+      ></a-sky>
+      <a-entity
+        id="moonSurface"
+        gltf-model="#moon-surface-model-asset"
+        position="200 -6.61 0"
+        rotation="0 0 0"
+        scale="500 500 500"
+        static-body
+        shadow="receive: true"
+      ></a-entity>
+      <a-entity
+        id="earthEntity"
+        gltf-model="#earth-model-asset"
+        position="-749.26 154.72 -72.42"
+        scale="0.2 0.2 0.2"
+        rotation="-13 -14 -30"
+        animation="property: rotation; to: 0 540 0; dur: 6000000; loop: true; easing: linear"
+      ></a-entity>
+      <a-entity
+        id="space-station-orbit"
+        gltf-model="#space-station"
+        position="-477.58649 355 453.2"
+        rotation="-2 28 -23"
+        scale="132 132 132"
+      ></a-entity>
+      <a-entity
+        id="dome"
+        gltf-model="#dome-model-asset"
+        position="76.352 -14.218 -132.933"
+        rotation="-0.009 -132.92 -0.045"
+        scale="9.45 10.53 9.37"
+        static-body
+        shadow
+        class="interactive"
+      ></a-entity>
+      <a-entity id="luz-torre3" position="97.98 14.44 112.63" rotation="-75.78 1.34 -99.36" light="angle: 58.84; color: #f9e9be; groundColor: #d1b423; decay: 0.68; intensity: 4.36; penumbra: 0.08; type: spot"></a-entity>
+      <a-entity
+        id="robertNPC"
+        gltf-model="#robert-model"
+        position="-9.969 -13.37 13.66"
+        rotation="0 11.772 0"
+        scale="4 4 4"
+          animation-mixer="clip: wave; loop: once"
+        class="interactive clickable"
+        shadow="cast: true"
+        npc-dialogue-trigger
+
+        sound__dialogue="src: #robert-line1-audio; autoplay: false; positional: false; volume: 0.8"
+      ></a-entity>
+<a-entity id="rover-repaired-light" position="76.9 -1.915 -36.58" light="angle: 55.94; color: #11bb2e; groundColor: #11e835; decay: 0.51; distance: 24.37; intensity: 19.8; type: point; shadowMapWidth: 512.01" visible="false"></a-entity>      <a-entity
+        id="lunarRover"
+        gltf-model="#rover-model-asset"
+        position="77.99656 -13.42 -36.81"
+        rotation="0 -71.82 0"
+        scale="12 12 12"
+        class="interactive clickable"
+        shadow
+        simple-rover-interaction
+                rover-quest-interaction
+        sound__success="src: #success-audio; autoplay: false; positional: false; volume: 1.0"
+      ></a-entity>
+      <a-entity
+        id="Rueda delantera derecha"
+        class="collectible interactive clickable"
+        gltf-model="#wheel-model"
+        position="82.68 -6.6 -100"
+        scale="3 3 3"
+        data-item-type="Rueda delantera derecha"
+        shadow="cast: true"
+                rover-quest-interaction
+      ></a-entity>
+      <a-entity
+        id="Rueda delantera izquierda"
+        class="collectible interactive clickable"
+        gltf-model="#wheel-model"
+        position="71.2 -11.8 38.16"
+        scale="3 3 3"
+        data-item-type="Rueda delantera izquierda"
+        shadow="cast: true"
+                rover-quest-interaction
+      ></a-entity>
+      <a-entity
+        id="Rueda trasera derecha"
+        class="collectible interactive clickable"
+        gltf-model="#wheel-model"
+        position="-45.29 -8.1 -27.7"
+        rotation="-69 56 67"
+        scale="3 3 3"
+        data-item-type="Rueda trasera derecha"
+        shadow="cast: true"
+                rover-quest-interaction
+      ></a-entity>
+      <a-entity
+        id="Rueda trasera izquierda"
+        class="collectible interactive clickable"
+        gltf-model="#wheel-model"
+        position="123.34 -9.74 -75.95"
+        rotation="100 -2.55 -165"
+        scale="3 3 3"
+        data-item-type="Rueda trasera izquierda"
+        shadow="cast: true"
+                rover-quest-interaction
+      ></a-entity>
+      <a-entity
+        id="Panel solar"
+        class="collectible interactive clickable"
+        gltf-model="#panel-model"
+        position="-9 -15 -45"
+        rotation="-36 0 0"
+        scale="10 10 10"
+        data-item-type="Panel solar"
+        shadow="cast: true"
+                rover-quest-interaction
+      ></a-entity>
+
+      
+         <a-entity
+        id="Panel solar 2"
+        class="collectible interactive clickable"
+        gltf-model="#panel-model"
+        position="110 -15 -45"
+        rotation="-36 0 0"
+        scale="10 10 10"
+        data-item-type="Panel solar"
+        shadow="cast: true"
+                   rover-quest-interaction
+      ></a-entity>
+      
+      
+      <a-entity
+        id="Cables"
+        class="collectible interactive clickable"
+        gltf-model="#cables-model"
+        position="126 -10.8 -49.4"
+        scale="0.5 0.5 0.5"
+        data-item-type="Cables"
+        shadow="cast: true"
+                rover-quest-interaction
+      ></a-entity>
+      <a-entity
+        id="Set de herramientas"
+        class="collectible interactive clickable"
+        gltf-model="#tools-model"
+        position="50 -14.1 101"
+        scale="6 6 6"
+        data-item-type="Set de herramientas"
+        shadow="cast: true"
+                rover-quest-interaction
+      ></a-entity>
+
+      <a-entity
+        id="crane1"
+        gltf-model="#grua"
+        position="74.4 -1 -67.36"
+        scale="15 15 15"
+        shadow="cast: true"
+      ></a-entity>
+      <a-entity
+        id="crane2"
+        gltf-model="#grua"
+        position="74.73 -2 88.85"
+        rotation="0 -77 0"
+        scale="15 15 15"
+        shadow="cast: true"
+      ></a-entity>
+      <a-entity
+        id="light1"
+        gltf-model="#light-tower"
+        position="45 2 -50"
+        scale="10 15 10"
+        shadow="cast: true"
+      ></a-entity>
+      <a-entity
+        id="light2"
+        gltf-model="#light-tower"
+        position="83 2 -4.7"
+        scale="10 15 10"
+        shadow="cast: true"
+      ></a-entity>
+      <a-entity
+        id="light3"
+        gltf-model="#light-tower"
+        position="97 2 113"
+        scale="10 15 10"
+        shadow="cast: true"
+      ></a-entity>
+      <a-entity
+        id="shelf1"
+        gltf-model="#estanteria"
+        position="70.4 -7 -40"
+        rotation="0 90 0"
+        scale="8 8 8"
+        shadow
+      ></a-entity>
+
+      <a-entity
+        id="cameraRig"
+        position="-40.27 -4.5 106.44"
+        rotation="0 0.038 0"
+        quake-event
+      
+        first-person-controller="speed: 4; jumpHeight: 6; jumpDuration: 1800; enabled: true;"
+      >
+        <a-camera
+          look-controls="pointerLockEnabled: false"
+          raycaster="objects: .interactive; enabled: true; interval: 99999; showLine: true; far: 50;"
+        >
+          <a-cursor
+            raycaster="objects: .clickable"
+            fuse="false"
+            color="#00FFAA"
+          ></a-cursor>
+          <a-entity
+            id="hud-controls-display"
+            position="0 -0.3 -1"
+            visible="true"
+          >
+            <a-plane
+              width="0.75"
+              height="0.75"
+              color="#111"
+              opacity="0.6"
+              side="double"
+            ></a-plane>
+            <a-text
+              value="[CONTROLES]\n\n W: Adelante   S: Atras\n A: Izquierda  D: Derecha\n  Mover raton: camara   Espacio: saltar\n\n Clic: interactuar/tocar\n\n Ocultar/Mostrar instrucciones: H"
+              align="center"
+              anchor="center"
+              baseline="top"
+              position="0 0.25 0.01"
+              color="#00FFAA"
+              width="0.8"
+              wrap-count="40"
+              line-height="70"
+              font="https://cdn.aframe.io/fonts/Roboto-msdf.json"
+            >
+            </a-text>
+          </a-entity>
+          <a-entity
+            id="quest-message-display"
+            position="0 0.1 -1.5"
+            visible="false"
+          >
+            <a-plane
+              width="1.5"
+              height="0.6"
+              color="#1A1A2E"
+              opacity="0.8"
+              side="double"
+            ></a-plane>
+            <a-text
+              id="quest-message-text"
+              value="..."
+              align="center"
+              anchor="center"
+              baseline="top"
+              position="0 0.25 0.01"
+              color="#E0E0E0"
+              width="1.4"
+              wrap-count="50"
+              font="https://cdn.aframe.io/fonts/Roboto-msdf.json"
+            >
+            </a-text>
+          </a-entity>
+          <a-sound
+            id="jumpSound"
+            src="#jumpAudio"
+            autoplay="false"
+            positional="false"
+            volume="0.3"
+          ></a-sound>
+          <a-sound
+            id="breathingSound"
+            src="#breathingAudio"
+            loop="true"
+            positional="false"
+            volume="0.05"
+          ></a-sound>
+          <a-sound
+            id="quakeSound"
+            src="#quakeAudio"
+            autoplay="false"
+            positional="false"
+            volume="0.020"
+          ></a-sound>
+          <a-sound
+            id="commsSound"
+            src="#commsAudio"
+            autoplay="false"
+            positional="false"
+            volume="1"
+          ></a-sound>
+          <a-entity
+            id="commsText"
+            position="0 -0.2 -1"
+            visible="false"
+            text="value: MENSAJE DESDE LA BASE; align: center; width: 2; color: #00FFAA; shader: msdf; font: https://cdn.aframe.io/fonts/Roboto-msdf.json"
+          ></a-entity>
+        </a-camera>
+      </a-entity>
+      <a-sound
+        sound="src: #ambientAudio; loop: true; positional: false; volume: 0.4"
+      ></a-sound>
+    </a-scene>
+    <script>
+      const introScreen = document.getElementById("intro-screen");
+      const startButton = document.getElementById("start-button");
+      const sceneEl = document.querySelector("a-scene");
+      const breathingSoundEl = document.querySelector("#breathingSound");
+      const ambientSoundEl = document.querySelector(
+        'a-scene > a-sound[sound*="ambientAudio"]'
+      );
+      startButton.addEventListener("click", () => {
+        console.log("Start button clicked");
+        introScreen.classList.add("hidden");
+        if (sceneEl.isPaused) {
+          sceneEl.play();
+        }
+        sceneEl.canvas.focus();
+        try {
+          if (breathingSoundEl?.components.sound) {
+            breathingSoundEl.components.sound.playSound();
+          } else {
+            console.warn("Breathing sound not found.");
+          }
+        } catch (e) {
+          console.error("Error playing breathing sound:", e);
+        }
+        try {
+          if (ambientSoundEl?.components.sound) {
+            ambientSoundEl.components.sound.playSound();
+          } else {
+            console.warn("Ambient sound not found.");
+          }
+        } catch (e) {
+          console.error("Error playing ambient sound:", e);
+        }
+      });
+      introScreen.addEventListener("transitionend", () => {
+        if (introScreen.classList.contains("hidden")) {
+          introScreen.style.display = "none";
+        }
+      });
+    </script>
+  </body>
+</html>
